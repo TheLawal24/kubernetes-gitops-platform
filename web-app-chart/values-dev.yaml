@@ -4,7 +4,7 @@ environment: development
 
 image:
   repository: europe-west2-docker.pkg.dev/lawal-project-84096/kubernetes-gitops-platform/web-app
-  tag: "cb9b90a8e1681fdb8bf4a21fa318f6e9592abce7"
+  tag: "2133c8e0558180afc6dfbdcaa3ed17ffc7e75491"
   pullPolicy: IfNotPresent
 
 service:
