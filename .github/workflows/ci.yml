@@ -65,15 +65,21 @@ jobs:
           ignore-unfixed: true
 
   publish:
-    name: Publish Immutable Image
+    name: Publish and Update GitOps
     runs-on: ubuntu-latest
     needs: build-and-scan
 
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
+    permissions:
+      contents: write
+      id-token: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v3
@@ -104,11 +110,82 @@ jobs:
         run: |
           docker push "${IMAGE}"
 
+      - name: Update Dev GitOps image tag
+        env:
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path("web-app-chart/values-dev.yaml")
+          text = path.read_text()
+
+          sha = os.environ["IMAGE_SHA"]
+
+          lines = text.splitlines()
+          output = []
+          inside_image = False
+          changed = False
+
+          for line in lines:
+              if line == "image:":
+                  inside_image = True
+                  output.append(line)
+                  continue
+
+              if inside_image and line.startswith("  tag:"):
+                  new_line = f'  tag: "{sha}"'
+                  if line != new_line:
+                      changed = True
+                  output.append(new_line)
+                  continue
+
+              if inside_image and line and not line.startswith("  "):
+                  inside_image = False
+
+              output.append(line)
+
+          if not changed:
+              print("Image tag already matches this commit.")
+          else:
+              path.write_text("\n".join(output) + "\n")
+              print(f"Updated Dev image tag to {sha}")
+          PY
+
+      - name: Show GitOps change
+        run: |
+          git diff -- web-app-chart/values-dev.yaml
+
+      - name: Commit GitOps image update
+        env:
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          if git diff --quiet -- web-app-chart/values-dev.yaml; then
+            echo "No GitOps update required."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add web-app-chart/values-dev.yaml
+
+          git commit \
+            -m "Deploy ${IMAGE_SHA} to dev [skip ci]"
+
+          git push origin HEAD:main
+
       - name: Job summary
         env:
           IMAGE: ${{ vars.GAR_LOCATION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GAR_REPOSITORY }}/${{ vars.APP_IMAGE_NAME }}:${{ github.sha }}
         run: |
-          echo "## Published container image" >> "${GITHUB_STEP_SUMMARY}"
+          echo "## GitOps deployment" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Published immutable image:" >> "${GITHUB_STEP_SUMMARY}"
           echo '```text' >> "${GITHUB_STEP_SUMMARY}"
           echo "${IMAGE}" >> "${GITHUB_STEP_SUMMARY}"
           echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Updated web-app-chart/values-dev.yaml." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Argo CD will reconcile the new desired state automatically." >> "${GITHUB_STEP_SUMMARY}"
