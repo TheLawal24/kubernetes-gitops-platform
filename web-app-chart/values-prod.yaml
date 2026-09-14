@@ -1,0 +1,24 @@
+replicaCount: 3
+
+environment: production
+
+image:
+  repository: nginx
+  tag: "1.27"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 128Mi
+
+config:
+  appEnv: production
+  appMessage: "Hello from Helm Production"

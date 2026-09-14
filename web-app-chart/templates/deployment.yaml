@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web-app
+  labels:
+    app: web-app
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    environment: {{ .Values.environment }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+
+  selector:
+    matchLabels:
+      app: web-app
+      app.kubernetes.io/instance: {{ .Release.Name }}
+
+  template:
+    metadata:
+      labels:
+        app: web-app
+        app.kubernetes.io/instance: {{ .Release.Name }}
+        environment: {{ .Values.environment }}
+
+    spec:
+      serviceAccountName: {{ .Release.Name }}-web-app
+
+      containers:
+        - name: nginx
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          ports:
+            - containerPort: 80
+
+          env:
+            - name: APP_ENV
+              value: {{ .Values.config.appEnv | quote }}
+
+            - name: APP_MESSAGE
+              value: {{ .Values.config.appMessage | quote }}
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
