@@ -9,7 +9,7 @@ def home():
         application="Kubernetes GitOps Platform",
         environment=os.getenv("APP_ENV", "unknown"),
         version=os.getenv("APP_VERSION", "dev"),
-        message=os.getenv("APP_MESSAGE", "Hello from GKE")
+        message=os.getenv("APP_MESSAGE", "Hello from automated GitOps delivery")
     )
 
 @app.route("/health")
