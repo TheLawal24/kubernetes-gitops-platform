@@ -1,10 +1,10 @@
-replicaCount: 2
+replicaCount: 1
 
 environment: staging
 
 image:
   repository: nginx
-  tag: "1.27"
+  tag: "ade62a90a1e4642fef2f9960c7df5a5efd0cfcc2"
   pullPolicy: IfNotPresent
 
 service:

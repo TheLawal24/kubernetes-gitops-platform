@@ -1,0 +1,30 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: web-app-staging
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/TheLawal24/kubernetes-gitops-platform.git
+    targetRevision: main
+    path: web-app-chart
+
+    helm:
+      releaseName: staging-release
+      valueFiles:
+        - values-staging.yaml
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+    syncOptions:
+      - CreateNamespace=true
