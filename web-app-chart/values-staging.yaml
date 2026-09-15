@@ -3,7 +3,7 @@ replicaCount: 1
 environment: staging
 
 image:
-  repository: nginx
+  repository: europe-west2-docker.pkg.dev/lawal-project-84096/kubernetes-gitops-platform/web-app
   tag: "ade62a90a1e4642fef2f9960c7df5a5efd0cfcc2"
   pullPolicy: IfNotPresent
 
