@@ -1,0 +1,130 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  promote:
+    name: Promote Staging Image to Production
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Read Staging image SHA
+        id: staging
+        run: |
+          STAGING_SHA=$(sed -n '/^image:/,/^[^ ]/p' \
+            web-app-chart/values-staging.yaml \
+            | awk '/tag:/ {gsub(/"/,"",$2); print $2}')
+
+          if ! [[ "${STAGING_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid Staging SHA: ${STAGING_SHA}"
+            exit 1
+          fi
+
+          echo "sha=${STAGING_SHA}" >> "${GITHUB_OUTPUT}"
+          echo "Promoting Staging SHA: ${STAGING_SHA}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_IMAGE_PUBLISH_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Verify immutable image exists
+        env:
+          IMAGE_SHA: ${{ steps.staging.outputs.sha }}
+        run: |
+          IMAGE="${{ vars.GAR_LOCATION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.GAR_REPOSITORY }}/${{ vars.APP_IMAGE_NAME }}:${IMAGE_SHA}"
+
+          echo "Verifying image:"
+          echo "${IMAGE}"
+
+          gcloud artifacts docker images describe "${IMAGE}" \
+            --project="${{ vars.GCP_PROJECT_ID }}"
+
+      - name: Update Production image tag
+        env:
+          IMAGE_SHA: ${{ steps.staging.outputs.sha }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          path = Path("web-app-chart/values-prod.yaml")
+          sha = os.environ["IMAGE_SHA"]
+
+          lines = path.read_text().splitlines()
+
+          output = []
+          inside_image = False
+
+          for line in lines:
+              if line == "image:":
+                  inside_image = True
+                  output.append(line)
+                  continue
+
+              if inside_image and line.startswith("  tag:"):
+                  output.append(f'  tag: "{sha}"')
+                  continue
+
+              if inside_image and line and not line.startswith("  "):
+                  inside_image = False
+
+              output.append(line)
+
+          path.write_text("\n".join(output) + "\n")
+
+          print(f"Production image tag set to {sha}")
+          PY
+
+      - name: Show GitOps change
+        run: |
+          git diff -- web-app-chart/values-prod.yaml
+
+      - name: Commit Production promotion
+        env:
+          IMAGE_SHA: ${{ steps.staging.outputs.sha }}
+        run: |
+          if git diff --quiet -- web-app-chart/values-prod.yaml; then
+            echo "Production already uses ${IMAGE_SHA}."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add web-app-chart/values-prod.yaml
+
+          git commit \
+            -m "Promote ${IMAGE_SHA} to production [skip ci]"
+
+          git push origin HEAD:main
+
+      - name: Promotion summary
+        env:
+          IMAGE_SHA: ${{ steps.staging.outputs.sha }}
+        run: |
+          echo "## Production Promotion" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Promoted immutable SHA:" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```text' >> "${GITHUB_STEP_SUMMARY}"
+          echo "${IMAGE_SHA}" >> "${GITHUB_STEP_SUMMARY}"
+          echo '```' >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Argo CD will reconcile Production automatically." >> "${GITHUB_STEP_SUMMARY}"
