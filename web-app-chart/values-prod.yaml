@@ -3,7 +3,7 @@ replicaCount: 1
 environment: production
 
 image:
-  repository: nginx
+  repository: europe-west2-docker.pkg.dev/lawal-project-84096/kubernetes-gitops-platform/web-app
   tag: "1.27"
   pullPolicy: IfNotPresent
 
@@ -13,7 +13,7 @@ service:
 
 resources:
   requests:
-    cpu: 100m
+    cpu: 25m
     memory: 64Mi
   limits:
     cpu: 250m
